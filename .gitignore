@@ -1,0 +1,27 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Database dumps & backups
+*.dump
+*.sql.gz
+*.backup
+backups/
+dumps/
+
+# Local Postgres/Redis data (if mounted outside Docker volumes)
+data/
+pgdata/
+
+# Logs
+*.log
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini

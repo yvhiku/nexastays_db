@@ -1,0 +1,24 @@
+# Nexa Stays — PostgreSQL only (backend runs locally on the host)
+
+services:
+  stays-db:
+    image: postgres:16-alpine
+    container_name: nexa-stays-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexa_stays
+      POSTGRES_PASSWORD: nexa_stays_dev
+      POSTGRES_DB: nexa_stays
+    ports:
+      - "5434:5432"
+    volumes:
+      - stays_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa_stays -d nexa_stays"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  stays_pg_data:

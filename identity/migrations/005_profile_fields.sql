@@ -1,0 +1,7 @@
+-- Add profile fields and KYC lock for Personal Info
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_url TEXT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_locked_at TIMESTAMPTZ NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();

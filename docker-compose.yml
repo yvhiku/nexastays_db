@@ -1,0 +1,39 @@
+services:
+  identity-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nexa_identity
+      POSTGRES_PASSWORD: nexa_identity_dev
+      POSTGRES_DB: nexa_identity
+    ports:
+      - "5433:5432"
+    volumes:
+      - identity_pg_data:/var/lib/postgresql/data
+
+  stays-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nexa_stays
+      POSTGRES_PASSWORD: nexa_stays_dev
+      POSTGRES_DB: nexa_stays
+    ports:
+      - "5434:5432"
+    volumes:
+      - stays_pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  # Reuse the original standalone-container volumes so existing dev data is kept.
+  identity_pg_data:
+    external: true
+    name: identity_identity_pg_data
+  stays_pg_data:
+    external: true
+    name: stays_stays_pg_data
+  redis_data:

@@ -1,0 +1,24 @@
+# Nexa Identity — PostgreSQL only (backend runs locally on the host)
+
+services:
+  identity-db:
+    image: postgres:16-alpine
+    container_name: nexa-identity-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexa_identity
+      POSTGRES_PASSWORD: nexa_identity_dev
+      POSTGRES_DB: nexa_identity
+    ports:
+      - "5433:5432"
+    volumes:
+      - identity_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa_identity -d nexa_identity"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  identity_pg_data:
