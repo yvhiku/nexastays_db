@@ -9,8 +9,9 @@ services:
       POSTGRES_USER: nexa_identity
       POSTGRES_PASSWORD: nexa_identity_dev
       POSTGRES_DB: nexa_identity
+    # Bind to localhost only — never expose Postgres on the public internet
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - identity_pg_data:/var/lib/postgresql/data
     healthcheck:

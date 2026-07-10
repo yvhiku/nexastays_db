@@ -9,8 +9,9 @@ services:
       POSTGRES_USER: nexa_stays
       POSTGRES_PASSWORD: nexa_stays_dev
       POSTGRES_DB: nexa_stays
+    # Bind to localhost only — never expose Postgres on the public internet
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - stays_pg_data:/var/lib/postgresql/data
     healthcheck:
