@@ -1,0 +1,11 @@
+-- DEV seed companion for backend/stays `npm run seed:listings`.
+-- Prefer the TypeScript runner (batched, configurable). This file documents
+-- the data shape and can delete prior seed rows:
+--
+--   DELETE FROM stays_listings WHERE title LIKE 'Seed · %';
+--
+-- Host used by default locally:
+--   9367ae46-3463-43ed-b39c-c9c68c238e7f (first APPROVED stays_host_profiles row)
+
+-- Example cleanup:
+-- DELETE FROM stays_listings WHERE title LIKE 'Seed · %';
