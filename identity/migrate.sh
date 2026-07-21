@@ -2,9 +2,9 @@
 set -eu
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-SERVICE="stays-db"
-PGUSER="nexa_stays"
-PGDB="nexa_stays"
+SERVICE="identity-db"
+PGUSER="nexa_identity"
+PGDB="nexa_identity"
 
 if [ -n "${NEXA_DATABASE_COMPOSE:-}" ]; then
   COMPOSE_FILE="$NEXA_DATABASE_COMPOSE"
@@ -61,4 +61,4 @@ done
 
 echo ""
 echo "Done. Applied: $applied, skipped: $skipped"
-echo "Connect: postgresql://nexa_stays:nexa_stays_dev@localhost:5434/nexa_stays"
+echo "Connect: postgresql://nexa_identity:nexa_identity_dev@localhost:5433/nexa_identity"
