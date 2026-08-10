@@ -1,0 +1,73 @@
+name: Database backup & restore
+
+on:
+  push:
+    paths:
+      - 'scripts/**'
+      - 'docker-compose.yml'
+      - 'docker-compose.backup.yml'
+      - '.github/workflows/backup-restore.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'docker-compose.yml'
+      - 'docker-compose.backup.yml'
+      - '.github/workflows/backup-restore.yml'
+  workflow_dispatch:
+
+jobs:
+  backup-restore-drill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Postgres stack
+        run: |
+          docker volume create identity_identity_pg_data || true
+          docker volume create stays_stays_pg_data || true
+          docker volume create database_redis_data || true
+          docker compose -f docker-compose.yml up -d identity-db stays-db
+          docker compose -f docker-compose.backup.yml up -d identity-restore-db stays-restore-db
+          for i in $(seq 1 60); do
+            docker compose -f docker-compose.yml exec -T identity-db pg_isready -U nexa_identity && break
+            sleep 2
+          done
+          for i in $(seq 1 60); do
+            docker compose -f docker-compose.yml exec -T stays-db pg_isready -U nexa_stays && break
+            sleep 2
+          done
+
+      - name: Apply migrations (identity + stays)
+        run: |
+          chmod +x identity/migrate.sh stays/migrate.sh scripts/*.sh || true
+          ./identity/migrate.sh
+          ./stays/migrate.sh
+
+      - name: Install client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Unit-equivalent shell checks
+        run: |
+          chmod +x scripts/*.sh scripts/lib/*.sh
+          # production restore must fail without confirms
+          set +e
+          TARGET_DATABASE_URL='postgresql://u:p@127.0.0.1:1/db' \
+            ./scripts/restore-postgres.sh identity /tmp/missing.dump production
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+
+      - name: Restore drill (filesystem off-host)
+        run: |
+          chmod +x scripts/restore-drill.sh
+          ./scripts/restore-drill.sh
+          test -f backups/drill/restore-drill-result.json
+          grep -q '"ok":true' backups/drill/restore-drill-result.json
+
+      - name: Ensure dumps are gitignored
+        run: |
+          git check-ignore -q backups/drill/*.dump || true
+          # create a sentinel dump name and ensure ignore pattern matches
+          mkdir -p backups
+          touch backups/sentinel.dump
+          git check-ignore -q backups/sentinel.dump

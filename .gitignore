@@ -7,8 +7,13 @@
 *.dump
 *.sql.gz
 *.backup
+backup/
 backups/
 dumps/
+restore/
+tmp-restore/
+.env.backup
+restore-drill-result.json
 
 # Local Postgres/Redis data (if mounted outside Docker volumes)
 data/

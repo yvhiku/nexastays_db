@@ -1,0 +1,20 @@
+# Example Docker Compose sidecar schedule marker (documentation only).
+# Prefer host/K8s CronJob. NestJS in-app schedulers must NOT run pg_dump.
+#
+# Kubernetes CronJob sketch:
+# apiVersion: batch/v1
+# kind: CronJob
+# metadata: { name: nexa-db-backup }
+# spec:
+#   schedule: "15 2 * * *"
+#   jobTemplate:
+#     spec:
+#       template:
+#         spec:
+#           restartPolicy: OnFailure
+#           containers:
+#             - name: backup
+#               image: postgres:16-alpine
+#               command: ["/scripts/backup-postgres.sh","all"]
+#               envFrom: [{ secretRef: { name: nexa-db-backup } }]
+#               volumeMounts: [{ name: scripts, mountPath: /scripts }, { name: backups, mountPath: /backups }]

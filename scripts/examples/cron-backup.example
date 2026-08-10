@@ -1,0 +1,8 @@
+# Example host cron (Linux). Copy to /etc/cron.d/nexa-db-backup after review.
+# Production scheduling outside this file is NOT VERIFIED by the repository alone.
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Nightly 02:15 UTC — load secrets from a root-only env file
+15 2 * * * root set -a; . /etc/nexa/backup.env; set +a; /opt/nexa/database/scripts/backup-postgres.sh all >> /var/log/nexa-db-backup.log 2>&1

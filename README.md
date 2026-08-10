@@ -60,6 +60,19 @@ Backend defaults match these ports (`backend/identity/.env`, `backend/stays/.env
 2. Run `database/migrate.ps1` (or the per-db script).
 3. Migrations are tracked in `schema_migrations` — already-applied files are skipped.
 
-Migrations were extracted from `nexa_backend/` for the split architecture. Pay/Go tables are **not** included.
+migrations were extracted from `nexa_backend/` for the split architecture. Pay/Go tables are **not** included.
+
+## Backup and restore
+
+Operational runbook: [`docs/PRODUCTION_BACKUP_AND_RESTORE.md`](./docs/PRODUCTION_BACKUP_AND_RESTORE.md) (also copied under repo `docs/`).
+
+```powershell
+# Unit tests (no DB)
+.\scripts\test-backup-unit.ps1
+
+# Full drill against local Docker DBs + isolated restore targets
+.\scripts\restore-drill.ps1
+.\scripts\restore-drill.ps1 -WithMinio
+```
 
 Full ecosystem overview: [`../docs/ECOSYSTEM_ARCHITECTURE.md`](../docs/ECOSYSTEM_ARCHITECTURE.md).

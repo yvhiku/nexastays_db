@@ -1,0 +1,65 @@
+# Ephemeral services for restore drills and optional MinIO off-host verification.
+# Does NOT replace production Postgres volumes. Not for application traffic.
+
+services:
+  identity-restore-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nexa_identity
+      POSTGRES_PASSWORD: nexa_identity_restore
+      POSTGRES_DB: nexa_identity_restore
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - identity_restore_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa_identity -d nexa_identity_restore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  stays-restore-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nexa_stays
+      POSTGRES_PASSWORD: nexa_stays_restore
+      POSTGRES_DB: nexa_stays_restore
+    ports:
+      - "127.0.0.1:55434:5432"
+    volumes:
+      - stays_restore_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexa_stays -d nexa_stays_restore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: nexa_backup_minio
+      MINIO_ROOT_PASSWORD: nexa_backup_minio_dev
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_backup_data:/data
+    # Server image has no mc; readiness checked by restore-drill TCP + minio-init retries.
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 nexa_backup_minio nexa_backup_minio_dev; do sleep 1; done;
+      mc mb -p local/nexa-db-backups || true;
+      mc anonymous set none local/nexa-db-backups || true;
+      exit 0;
+      "
+
+volumes:
+  identity_restore_pg_data:
+  stays_restore_pg_data:
+  minio_backup_data:
