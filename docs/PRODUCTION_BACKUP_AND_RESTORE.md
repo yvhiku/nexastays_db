@@ -1,11 +1,41 @@
 # Production Backup And Restore — Nexa Identity + Stays
 
-**Status (repository evidence):** logical backup + isolated restore drill are **IMPLEMENTED**.  
-**Production scheduling, managed PITR, and cloud off-site delivery:** see classification below — do not treat this document as proof that a hosted production cluster is already backed up.
+**Status (repository evidence):** logical backup + isolated restore drill + VPS systemd scheduler packaging are **IMPLEMENTED**.  
+**Production VPS scheduling / real cloud bucket / production RPO-RTO:** **NOT VERIFIED** until operator evidence exists.
 
-Related audit finding: **PROD-OPS-001**.
+Related audit finding: **PROD-OPS-001 — PARTIALLY CLOSED**.
 
 Central alerting (**PROD-OPS-003**) is **not** closed by this work.
+
+---
+
+## Topology (VPS)
+
+Confirmed target architecture:
+
+```
+VPS (SSH)
+ └── Docker Compose
+      ├── Identity PostgreSQL  (published 127.0.0.1:5433)
+      ├── Stays PostgreSQL     (published 127.0.0.1:5434)
+      └── application services (backend/deploy/docker-compose.release.yml)
+```
+
+Backup job runs **on the VPS host**, connecting to published localhost ports.  
+It dumps both databases, validates archives, copies off-site, then applies retention.
+
+---
+
+## Classification legend
+
+| Label | Meaning |
+|-------|---------|
+| **IMPLEMENTED** | Code/scripts exist in this repository |
+| **LOCALLY VERIFIED** | Executed successfully on a developer/CI machine |
+| **VERIFIED AGAINST MINIO** | S3-compatible path exercised with local MinIO |
+| **VPS VERIFIED** | Scheduler/install observed on the real VPS |
+| **PRODUCTION VERIFIED** | Real cloud bucket + scheduled production execution evidenced |
+| **NOT IMPLEMENTED** | Explicitly absent |
 
 ---
 
@@ -15,195 +45,211 @@ Central alerting (**PROD-OPS-003**) is **not** closed by this work.
 [identity-db] --pg_dump -Fc--> BACKUP_DIR/identity_YYYY-MM-DD_HH-mm-ss.dump
 [stays-db]    --pg_dump -Fc--> BACKUP_DIR/stays_YYYY-MM-DD_HH-mm-ss.dump
                                       |
-                                      +--> integrity: pg_restore --list + expected tables
+                                      +--> integrity: non-empty + pg_restore --list + expected tables
+                                      +--> sha256 + *.dump.manifest.json
                                       |
-                                      +--> optional remote: filesystem OR S3-compatible
+                                      +--> REQUIRED remote when NEXA_ENV=production
+                                      |      (filesystem OR S3-compatible; fail closed)
+                                      +--> remote size verify
                                       |
-                                      +--> retention cleanup (local only unless separately configured)
+                                      +--> retention (after success only)
 ```
 
-Scripts (Windows-first + Linux/CI):
+Scripts:
 
 | Script | Role |
 |--------|------|
-| `scripts/backup-postgres.ps1` / `.sh` | Dump both DBs, verify archive, retention, optional remote |
+| `scripts/backup-postgres.ps1` / `.sh` | Dump both DBs, verify, remote, retention, lock |
 | `scripts/restore-postgres.ps1` / `.sh` | Restore into target with production safeguards |
 | `scripts/restore-drill.ps1` / `.sh` | Ephemeral restore containers + timed drill |
-| `scripts/lib/NexaBackup.Common.ps1` | Shared helpers (redaction, retention, clients) |
-| `docker-compose.backup.yml` | Isolated restore Postgres (+ optional MinIO) |
+| `scripts/run-scheduled-backup.sh` | systemd entrypoint (loads `/etc/nexa/backup.env`) |
+| `scripts/install-systemd-backup.sh` | Install units to `/opt/nexa/database` |
+| `scripts/uninstall-systemd-backup.sh` | Remove timer/service |
+| `scripts/systemd/nexa-db-backup.{service,timer}` | Nightly 02:15 UTC timer |
+| `scripts/lib/*` | Shared helpers (redaction, policy, clients) |
 
-Custom format (`-F c`) is required. Plain SQL dumps are not the primary format.
+Custom format (`-F c`) is required.
 
 ---
 
-## 2. Backup frequency
+## 2. Scheduling (VPS / systemd)
 
-| Environment | Frequency | Status |
-|-------------|-----------|--------|
-| Local / CI drill | On-demand via scripts | **VERIFIED** (when drill is run) |
-| Production host | Nightly recommended (`scripts/examples/cron-backup.example`) | **CONFIGURED EXAMPLE — scheduling NOT VERIFIED** until installed on a host |
-| Kubernetes | Example CronJob YAML | **NOT VERIFIED** |
+**Primary:** systemd timer (IMPLEMENTED). **VPS VERIFIED: NO** until installed on the host.
+
+```bash
+# On VPS as root — from a checkout of this repo
+./scripts/install-systemd-backup.sh /path/to/database-repo
+# Edit secrets:
+sudo $EDITOR /etc/nexa/backup.env   # chmod 600
+# Manual verification BEFORE enabling timer:
+sudo systemctl start nexa-db-backup.service
+sudo journalctl -u nexa-db-backup.service -n 200 --no-pager
+ls -la /var/backups/nexa/
+# Then enable timer:
+sudo systemctl start nexa-db-backup.timer
+sudo systemctl list-timers nexa-db-backup.timer
+```
+
+Removal:
+
+```bash
+sudo ./scripts/uninstall-systemd-backup.sh
+```
+
+Lock: `flock` on `BACKUP_LOCK_FILE` (default `/var/lock/nexa-db-backup.lock`) — overlapping jobs fail fast.  
+Timeout: systemd `TimeoutStartSec=3600`.
+
+Cron example (`scripts/examples/cron-backup.example`) is **fallback only**.
 
 ---
 
 ## 3. Retention
 
 - Env: `BACKUP_RETENTION_DAYS` (default `30`)
-- Deletes only files matching `identity_|stays_YYYY-MM-DD_HH-mm-ss.dump`
+- Deletes matching `identity_|stays_YYYY-MM-DD_HH-mm-ss.dump` (+ `.manifest.json`)
 - **Never** deletes the newest valid dump
 - **Never** deletes dumps from the current UTC calendar day
-- Does **not** remotely purge object storage unless a separate ops process is added
+- Runs **only after** successful dump (+ remote when required)
+- Does **not** purge remote object storage unless a separate ops process is added
 
 ---
 
-## 4. Storage
+## 4. Storage / remote policy
 
-| Layer | Location | Notes |
-|-------|----------|-------|
-| Primary local | `BACKUP_DIR` **outside** app web roots | Permissions tightened best-effort (`chmod 700` / Windows ACL) |
-| Off-host filesystem | `BACKUP_REMOTE_PROVIDER=filesystem` | Copy after integrity check |
-| S3-compatible | MinIO / AWS / R2 via AWS CLI (or dockerized CLI) | Credentials via env only |
+| Layer | Status |
+|-------|--------|
+| Local `BACKUP_DIR` | IMPLEMENTED |
+| Filesystem off-host | IMPLEMENTED / LOCALLY VERIFIED (drill) |
+| S3-compatible (MinIO) | IMPLEMENTED / VERIFIED AGAINST MINIO (prior drill) |
+| Production cloud bucket | **NOT VERIFIED** |
+| Production mandatory remote | IMPLEMENTED (`NEXA_ENV=production` or `BACKUP_REQUIRE_REMOTE=true`) |
 
-Docker named volumes (`identity_pg_data`, `stays_pg_data`) are **not** backups.
+When remote is required:
+
+- `BACKUP_REMOTE_ENABLED=true` mandatory
+- Failed remote copy ⇒ overall backup job **fails** (non-zero)
+- Production `S3_ENDPOINT` must be `https://` when set
+- Manifest records remote key/path + verified flag
+
+**Do not claim** local MinIO proves a real cloud bucket.
 
 ---
 
-## 5. Encryption
+## 5. Encryption & credentials
 
 | Control | Status |
 |---------|--------|
-| Secrets via env / secret manager | **REQUIRED** |
-| Encrypted transport to S3/MinIO (TLS) | **REQUIRED** in production (`https://` endpoint) |
-| At-rest object encryption | Prefer provider SSE (S3 SSE / bucket default) — **document for production**; not reinvented in-script |
-| Client-side dump encryption | **NOT IMPLEMENTED** (avoid ad-hoc key management). Prefer encrypted volume / SSE |
-| Restrictive backup filesystem ACLs | Best-effort in scripts |
-
-Backups contain PII and financial ledger metadata — treat like production data.
+| Secrets via env (`/etc/nexa/backup.env`) | REQUIRED |
+| TLS to S3 in production | REQUIRED |
+| At-rest SSE | Prefer provider bucket default — not reinvented |
+| Client-side dump encryption | **NOT IMPLEMENTED** |
+| Log redaction | IMPLEMENTED |
 
 ---
 
-## 6. Credentials
+## 6. Restore
 
-See `.env.backup.example`. Never commit `.env.backup` or dump files (gitignored).
+Default target: **isolated**.  
+Staging: `RESTORE_CONFIRM=YES`.  
+Production: `RESTORE_CONFIRM=YES` **and** `RESTORE_ALLOW_PRODUCTION=YES`.
 
-Scripts redact passwords from logs (`***`). Do not pass `DATABASE_URL` to public HTTP APIs.
+Restore from remote filesystem path is proven by the Linux restore drill (`restored_from: remote_filesystem`).  
+Restore from production cloud object: **NOT VERIFIED**.
 
----
+Stays restore validates:
 
-## 7. Restore procedure
-
-1. Identify latest valid `*.dump` (local or remote).
-2. Start **isolated** restore targets (`docker compose -f docker-compose.backup.yml up -d identity-restore-db stays-restore-db`) **or** a dedicated restore instance.
-3. Run:
-
-```powershell
-.\scripts\restore-postgres.ps1 `
-  -DumpFile .\backups\drill\identity_....dump `
-  -DatabaseKey identity `
-  -Target isolated `
-  -TargetDatabaseUrl 'postgresql://nexa_identity:nexa_identity_restore@127.0.0.1:55433/nexa_identity_restore'
-```
-
-4. For staging: `RESTORE_CONFIRM=YES` and `-Target staging`.
-5. For production: `RESTORE_CONFIRM=YES` **and** `RESTORE_ALLOW_PRODUCTION=YES`, with explicit authorization recorded in the incident ticket.
-
-Default target is **isolated**. Production is rejected without double confirmation.
+- expected tables
+- `ex_stays_bookings_active_overlap`
+- `idx_stays_ledger_settled_guest_payment_unique`
 
 ---
 
-## 8. Restore drill
+## 7. Restore drill
 
 ```powershell
 cd database
-.\scripts\restore-drill.ps1              # filesystem off-host
-.\scripts\restore-drill.ps1 -WithMinio   # MinIO S3-compatible off-host
+.\scripts\restore-drill.ps1
+.\scripts\restore-drill.ps1 -WithMinio
 ```
 
-Result JSON: `backups/drill/restore-drill-result.json` (timings + sizes).
+```bash
+bash scripts/restore-drill.sh
+```
+
+Result JSON: `backups/drill/restore-drill-result.json` with  
+`BACKUP_DURATION`, `RESTORE_DURATION`, `TOTAL_DURATION`, `BACKUP_SIZE`, `REMOTE_COPY_STATUS`, `RESTORE_STATUS`, `VALIDATION_STATUS`.
 
 ---
 
-## 9–10. RPO / RTO
+## 8–9. RPO / RTO
 
-| Metric | Target | Verified (this repo) |
-|--------|--------|----------------------|
-| **RPO** | ≤ 24h for nightly logical backups | **VERIFIED RPO = last successful drill/backup age only in environments where scheduling runs**. Local drill proves tooling RPO ≈ seconds between dump and restore for that snapshot — **not** production lag. |
-| **RTO** | Target ≤ 4h for logical restore of both DBs (ops judgment) | **VERIFIED** local drill (2026-08-10, Docker tooling): total ≈ **24.1s** (`total_duration_ms` 24055) with MinIO off-host; restore phase ≈ **16.1s**; filesystem-only drill total ≈ **23.9s**. Production RTO depends on host/network and is **NOT VERIFIED** here. |
+| Metric | TARGET | TOOLING CAPABILITY | PRODUCTION VERIFIED |
+|--------|--------|--------------------|---------------------|
+| **RPO** | ≤ 24h with nightly logical backups | Nightly dump tooling exists | **NOT VERIFIED** (scheduler not evidenced on VPS) |
+| **RTO** | ≤ 4h ops target for both DBs | LOCAL DRILL RTO ≈ tens of seconds | **NOT VERIFIED** |
 
-**PITR:** **NOT IMPLEMENTED** in this repository. Nightly/`pg_dump` is **not** point-in-time recovery. Production managed PostgreSQL (or WAL archiving) is required before claiming minute-level RPO.
+Local / MinIO drill timings are **LOCAL DRILL RTO**, not production RTO.
 
 ---
 
-## 11. Failure handling
+## 10. PITR
 
-Scripts exit non-zero and emit JSON/log lines when:
+**PITR NOT IMPLEMENTED.**
 
-- env missing
-- DB unreachable / bad credentials (dump fails)
-- client tools missing (Docker fallback attempted)
-- empty/corrupt archive
-- remote copy fails
+Consequence: nightly `pg_dump` provides snapshot recovery only — not arbitrary point-in-time recovery.  
+Minute-level RPO requires managed Postgres PITR or WAL archiving outside this repo.
+
+---
+
+## 11. Production verification checklist
+
+1. Configure `/etc/nexa/backup.env` (DB URLs, S3, `NEXA_ENV=production`).
+2. Install systemd units (`install-systemd-backup.sh`).
+3. Execute **manual** `systemctl start nexa-db-backup.service`.
+4. Verify identity + stays dumps + manifests under `/var/backups/nexa`.
+5. Verify remote objects (bucket listing / size).
+6. Verify retention rules (optional age simulation).
+7. Start timer; observe next OnCalendar fire (`list-timers` + journal).
+8. Isolated restore **from remote** dump/object.
+9. Record backup duration.
+10. Record restore duration.
+11. Record PRODUCTION VERIFIED RPO (age of last successful scheduled backup).
+12. Record PRODUCTION VERIFIED RTO (actual restore on production-class hardware).
+
+Until steps 3–8 are evidenced: keep **PARTIALLY CLOSED**.
+
+---
+
+## 12. Failure handling
+
+Non-zero exit + structured JSON logs when:
+
+- env missing / remote policy violated
+- dump fails / empty / corrupt TOC
+- expected tables missing
+- remote copy or remote verify fails
+- flock busy (overlap)
 - restore validation fails
 
-Retention never wipes the newest dump on failure of a new backup (new dump is only published after integrity checks).
+---
+
+## 13. Observability
+
+Structured logs: `backup.*`, `restore.*`, `restore_drill.*`.  
+Central paging remains **PROD-OPS-003**. Recommend alerting on `nexa-db-backup.service` failure via systemd → webhook/email.
 
 ---
 
-## 12. Incident procedure (disaster)
+## 14. Acceptance checklist
 
-1. Freeze writes if corruption/ransom risk.
-2. Identify latest valid backup (local + remote).
-3. Restore into isolated environment first; validate schema/constraints.
-4. Validate application connectivity against restore targets.
-5. Production restore only with dual confirmation env flags + authorization.
-6. Record incident, actual RTO/RPO, and owner.
-
-**Restore owner (role):** Platform/SRE on-call (assign named human outside this repo).
-
----
-
-## 13. Operational checklist
-
-### Daily
-- [ ] Last backup succeeded (log / job status)
-- [ ] Remote copy succeeded if enabled
-- [ ] Latest dumps present for identity + stays
-
-### Weekly
-- [ ] Backup age < retention expectation
-- [ ] Remote listing / filesystem path inspected
-- [ ] Disk usage for `BACKUP_DIR`
-
-### Monthly
-- [ ] Run `restore-drill` (both databases)
-- [ ] Record duration into ticket
-- [ ] Credential rotation if policy requires
-
----
-
-## 14. Observability
-
-Scripts emit structured JSON logs (`backup.started`, `backup.completed`, `backup.failed`, `restore.*`, `restore_drill.*`).
-
-**Central alerting remains PROD-OPS-003** — not closed here. Wire job failure alerts externally.
-
----
-
-## 15. Verification checklist (P0 acceptance)
-
-- [x] Identity backup command
-- [x] Stays backup command
-- [x] Archive integrity (`pg_restore --list` + expected tables)
-- [x] Retention rules
-- [x] Off-host path (filesystem; MinIO optional)
-- [x] Env-based credentials
-- [x] Secret redaction in logs
-- [x] Isolated restore default
-- [x] Production restore dual confirm
-- [x] Restore verification queries / Stays constraints
-- [x] Dumps gitignored
-- [x] CI workflow for drill
-- [x] Runbook (this document)
-- [x] RPO/RTO target vs verified
+- [x] Identity + Stays backup
+- [x] Integrity + expected tables + sha256 manifest
+- [x] Retention after success
+- [x] Remote fail-closed when production
+- [x] systemd timer packaging + install/uninstall
+- [x] Secret redaction / dumps gitignored
+- [x] Isolated restore + dual confirm
 - [x] PITR explicitly NOT IMPLEMENTED
-- [x] Scheduling example only / NOT VERIFIED in production
+- [ ] VPS scheduled execution VERIFIED
+- [ ] Production cloud bucket VERIFIED
+- [ ] Production RPO/RTO VERIFIED

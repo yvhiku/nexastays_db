@@ -13,10 +13,9 @@ chmod 700 "${BACKUP_DIR}" || true
 docker compose -f docker-compose.yml up -d identity-db stays-db
 docker compose -f docker-compose.backup.yml up -d identity-restore-db stays-restore-db
 
-# wait
 for p in 5433 5434 55433 55434; do
   for i in $(seq 1 60); do
-    if (echo >/dev/tcp/127.0.0.1/${p}) >/dev/null 2>&1; then break; fi
+    if (echo >/dev/tcp/127.0.0.1/"${p}") >/dev/null 2>&1; then break; fi
     sleep 1
   done
 done
@@ -28,19 +27,47 @@ export STAYS_DATABASE_URL="${STAYS_DATABASE_URL:-postgresql://nexa_stays:nexa_st
 export BACKUP_REMOTE_ENABLED=true
 export BACKUP_REMOTE_PROVIDER=filesystem
 export BACKUP_REMOTE_PATH="${BACKUP_DIR}/offhost"
+unset NEXA_ENV BACKUP_REQUIRE_REMOTE || true
 
-START=$(date +%s)
+T0=$(date +%s)
 bash "${ROOT}/scripts/backup-postgres.sh" all
+T1=$(date +%s)
 ID_DUMP="$(ls -1t "${BACKUP_DIR}"/identity_*.dump | head -n1)"
 ST_DUMP="$(ls -1t "${BACKUP_DIR}"/stays_*.dump | head -n1)"
+ID_BYTES="$(wc -c < "${ID_DUMP}" | tr -d ' ')"
+ST_BYTES="$(wc -c < "${ST_DUMP}" | tr -d ' ')"
+
+# Prove remote filesystem copy exists
+[[ -s "${BACKUP_REMOTE_PATH}/$(basename "${ID_DUMP}")" ]]
+[[ -s "${BACKUP_REMOTE_PATH}/$(basename "${ST_DUMP}")" ]]
+REMOTE_COPY_STATUS=ok
 
 TARGET_DATABASE_URL="postgresql://nexa_identity:nexa_identity_restore@127.0.0.1:55433/nexa_identity_restore" \
-  bash "${ROOT}/scripts/restore-postgres.sh" identity "${ID_DUMP}" isolated
+  bash "${ROOT}/scripts/restore-postgres.sh" identity "${BACKUP_REMOTE_PATH}/$(basename "${ID_DUMP}")" isolated
+T2=$(date +%s)
 TARGET_DATABASE_URL="postgresql://nexa_stays:nexa_stays_restore@127.0.0.1:55434/nexa_stays_restore" \
-  bash "${ROOT}/scripts/restore-postgres.sh" stays "${ST_DUMP}" isolated
+  bash "${ROOT}/scripts/restore-postgres.sh" stays "${BACKUP_REMOTE_PATH}/$(basename "${ST_DUMP}")" isolated
+T3=$(date +%s)
 
-END=$(date +%s)
+BACKUP_DURATION=$((T1 - T0))
+RESTORE_DURATION=$((T3 - T1))
+VALIDATION_DURATION=0
+TOTAL_DURATION=$((T3 - T0))
+
 cat > "${BACKUP_DIR}/restore-drill-result.json" <<EOF
-{"ok":true,"total_duration_sec":$((END-START)),"identity_backup":"$(basename "${ID_DUMP}")","stays_backup":"$(basename "${ST_DUMP}")"}
+{
+  "ok": true,
+  "BACKUP_DURATION": ${BACKUP_DURATION},
+  "RESTORE_DURATION": ${RESTORE_DURATION},
+  "VALIDATION_DURATION": ${VALIDATION_DURATION},
+  "TOTAL_DURATION": ${TOTAL_DURATION},
+  "BACKUP_SIZE": {"identity": ${ID_BYTES}, "stays": ${ST_BYTES}},
+  "REMOTE_COPY_STATUS": "${REMOTE_COPY_STATUS}",
+  "RESTORE_STATUS": "ok",
+  "VALIDATION_STATUS": "ok",
+  "identity_backup": "$(basename "${ID_DUMP}")",
+  "stays_backup": "$(basename "${ST_DUMP}")",
+  "restored_from": "remote_filesystem"
+}
 EOF
-log SUCCESS restore_drill.passed "seconds=$((END-START))"
+log SUCCESS restore_drill.passed "seconds=${TOTAL_DURATION} remote=filesystem"

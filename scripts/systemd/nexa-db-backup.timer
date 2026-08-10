@@ -1,0 +1,13 @@
+[Unit]
+Description=Nightly Nexa Stays database backup timer
+Documentation=file:///opt/nexa/database/docs/PRODUCTION_BACKUP_AND_RESTORE.md
+
+[Timer]
+# 02:15 UTC daily with small jitter to avoid thundering herd on shared object storage
+OnCalendar=*-*-* 02:15:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+Unit=nexa-db-backup.service
+
+[Install]
+WantedBy=timers.target

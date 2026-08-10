@@ -90,6 +90,39 @@ Remove-Item Env:RESTORE_CONFIRM -ErrorAction SilentlyContinue
 # Naming
 Assert-True ((Get-BackupFileName -DatabaseKey stays -Timestamp '2026-08-10_12-00-00') -eq 'stays_2026-08-10_12-00-00.dump') 'naming'
 
+# --- Production remote policy ---
+Remove-Item Env:NEXA_ENV -ErrorAction SilentlyContinue
+Remove-Item Env:BACKUP_REQUIRE_REMOTE -ErrorAction SilentlyContinue
+Remove-Item Env:BACKUP_REMOTE_ENABLED -ErrorAction SilentlyContinue
+Assert-True (-not (Test-RemoteIsRequired)) 'remote not required by default'
+
+$env:NEXA_ENV = 'production'
+Assert-True (Test-RemoteIsRequired) 'production requires remote'
+$env:BACKUP_REMOTE_ENABLED = 'false'
+try {
+  Assert-RemotePolicyConfigured
+  Assert-True $false 'production without remote should throw'
+} catch {
+  Assert-True $true 'production without remote throws'
+}
+
+$env:BACKUP_REMOTE_ENABLED = 'true'
+$env:BACKUP_REMOTE_PROVIDER = 's3'
+$env:S3_BUCKET = 'b'
+$env:S3_ACCESS_KEY_ID = 'ak'
+$env:S3_SECRET_ACCESS_KEY = 'sk'
+$env:S3_ENDPOINT = 'http://127.0.0.1:9000'
+try {
+  Assert-RemotePolicyConfigured
+  Assert-True $false 'http endpoint in production should throw'
+} catch {
+  Assert-True $true 'http endpoint in production rejected'
+}
+$env:S3_ENDPOINT = 'https://s3.example.com'
+Assert-RemotePolicyConfigured
+Assert-True $true 'https s3 policy accepts'
+Remove-Item Env:NEXA_ENV,Env:BACKUP_REMOTE_ENABLED,Env:BACKUP_REMOTE_PROVIDER,Env:S3_BUCKET,Env:S3_ACCESS_KEY_ID,Env:S3_SECRET_ACCESS_KEY,Env:S3_ENDPOINT -ErrorAction SilentlyContinue
+
 if ($failed -gt 0) {
   Write-Host "FAILED=$failed"
   exit 1

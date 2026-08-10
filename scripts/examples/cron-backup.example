@@ -1,8 +1,13 @@
-# Example host cron (Linux). Copy to /etc/cron.d/nexa-db-backup after review.
-# Production scheduling outside this file is NOT VERIFIED by the repository alone.
+# DEPRECATED as primary production scheduler — prefer systemd timer:
+#   scripts/install-systemd-backup.sh
+#   scripts/systemd/nexa-db-backup.timer
+#
+# Example host cron remains as emergency fallback only.
+# Production scheduling is NOT VERIFIED until installed and observed on a VPS.
 
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Nightly 02:15 UTC — load secrets from a root-only env file
-15 2 * * * root set -a; . /etc/nexa/backup.env; set +a; /opt/nexa/database/scripts/backup-postgres.sh all >> /var/log/nexa-db-backup.log 2>&1
+# Prefer flock-backed backup-postgres.sh (built-in lock) over bare cron alone.
+15 2 * * * root set -a; . /etc/nexa/backup.env; set +a; /opt/nexa/database/scripts/backup-postgres.sh all >> /var/log/nexa/nexa-db-backup.log 2>&1

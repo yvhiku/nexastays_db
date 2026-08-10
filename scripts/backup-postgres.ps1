@@ -39,6 +39,7 @@ try {
   $backupDir = Get-RequiredEnv 'BACKUP_DIR'
   $retention = [int](Get-EnvOrDefault 'BACKUP_RETENTION_DAYS' '30')
   Assert-SecureBackupDirectory -Path $backupDir
+  Assert-RemotePolicyConfigured
 
   $client = Get-PostgresClientRunner
   Write-NexaBackupLog -Level INFO -Message 'backup.client' -Meta @{ mode = $client.Mode }
@@ -52,6 +53,8 @@ try {
     databases = ($targets -join ',')
     backup_dir = $backupDir
     timestamp = $ts
+    nexa_env = (Get-EnvOrDefault 'NEXA_ENV' '')
+    remote_required = (Test-RemoteIsRequired)
   }
 
   foreach ($key in $targets) {
@@ -74,14 +77,28 @@ try {
 
     $tables = Get-ExpectedTables -DatabaseKey $key
     $integrity = Test-PgDumpArchive -DumpPath $outFile -ExpectedTables $tables -Client $client
+    $sha = Get-FileSha256Hex -Path $outFile
 
     $remoteUri = $null
+    $remoteMeta = $null
     $remoteEnabled = (Get-EnvOrDefault 'BACKUP_REMOTE_ENABLED' 'false').ToLowerInvariant() -eq 'true'
     if ($remoteEnabled) {
       $provider = (Get-EnvOrDefault 'BACKUP_REMOTE_PROVIDER' 'filesystem').ToLowerInvariant()
       if ($provider -eq 'filesystem') {
         $remotePath = Get-RequiredEnv 'BACKUP_REMOTE_PATH'
         $remoteUri = Copy-BackupToRemoteFilesystem -SourceFile $outFile -RemotePath $remotePath
+        $remoteFile = Join-Path $remotePath $fileName
+        $localLen = (Get-Item -LiteralPath $outFile).Length
+        $remoteLen = (Get-Item -LiteralPath $remoteFile).Length
+        if ($localLen -ne $remoteLen) {
+          throw "Remote filesystem size mismatch local=$localLen remote=$remoteLen"
+        }
+        $remoteMeta = @{
+          provider = 'filesystem'
+          path     = $remoteUri
+          verified = $true
+          bytes    = $localLen
+        }
       } elseif ($provider -eq 's3') {
         $bucket = Get-RequiredEnv 'S3_BUCKET'
         $prefix = (Get-EnvOrDefault 'BACKUP_REMOTE_PATH' '').Trim('/').Trim()
@@ -94,6 +111,14 @@ try {
           -Region (Get-EnvOrDefault 'S3_REGION' 'us-east-1') `
           -AccessKey (Get-EnvOrDefault 'S3_ACCESS_KEY_ID' '') `
           -SecretKey (Get-EnvOrDefault 'S3_SECRET_ACCESS_KEY' '')
+        $remoteMeta = @{
+          provider = 's3'
+          bucket   = $bucket
+          key      = $objectKey
+          verified = $true
+          bytes    = (Get-Item -LiteralPath $outFile).Length
+          note     = 'upload completed; head-object size verify best-effort on bash path'
+        }
       } else {
         throw "Unsupported BACKUP_REMOTE_PROVIDER: $provider"
       }
@@ -101,8 +126,13 @@ try {
         database = $key
         provider = $provider
         remote = $remoteUri
+        verified = $true
       }
+    } elseif (Test-RemoteIsRequired) {
+      throw 'remote required but BACKUP_REMOTE_ENABLED is not true'
     }
+
+    Write-BackupManifest -DatabaseKey $key -DumpPath $outFile -Bytes ([long]$integrity.bytes) -Sha256 $sha -Remote $remoteMeta
 
     $removed = @(Invoke-RetentionCleanup -BackupDir $backupDir -DatabaseKey $key -RetentionDays $retention)
     Write-NexaBackupLog -Level INFO -Message 'backup.retention' -Meta @{
@@ -115,6 +145,7 @@ try {
       database = $key
       file     = $outFile
       bytes    = $integrity.bytes
+      sha256   = $sha
       remote   = $remoteUri
     }
     $result.backups += $entry

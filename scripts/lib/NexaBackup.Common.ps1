@@ -413,3 +413,61 @@ function Get-ExpectedTables {
   param([ValidateSet('identity','stays')][string]$DatabaseKey)
   return $script:NexaExpectedTables[$DatabaseKey]
 }
+
+function Test-RemoteIsRequired {
+  $nexa = (Get-EnvOrDefault 'NEXA_ENV' '').ToLowerInvariant()
+  $flag = (Get-EnvOrDefault 'BACKUP_REQUIRE_REMOTE' 'false').ToLowerInvariant()
+  return ($nexa -eq 'production' -or $flag -eq 'true')
+}
+
+function Assert-RemotePolicyConfigured {
+  if (-not (Test-RemoteIsRequired)) { return }
+  $enabled = (Get-EnvOrDefault 'BACKUP_REMOTE_ENABLED' 'false').ToLowerInvariant()
+  if ($enabled -ne 'true') {
+    throw 'NEXA_ENV=production (or BACKUP_REQUIRE_REMOTE=true) requires BACKUP_REMOTE_ENABLED=true'
+  }
+  $provider = (Get-EnvOrDefault 'BACKUP_REMOTE_PROVIDER' 'filesystem').ToLowerInvariant()
+  if ($provider -eq 'filesystem') {
+    [void](Get-RequiredEnv 'BACKUP_REMOTE_PATH')
+  } elseif ($provider -eq 's3') {
+    [void](Get-RequiredEnv 'S3_BUCKET')
+    [void](Get-RequiredEnv 'S3_ACCESS_KEY_ID')
+    [void](Get-RequiredEnv 'S3_SECRET_ACCESS_KEY')
+    $nexa = (Get-EnvOrDefault 'NEXA_ENV' '').ToLowerInvariant()
+    $ep = (Get-EnvOrDefault 'S3_ENDPOINT' '')
+    if ($nexa -eq 'production' -and $ep -and -not $ep.StartsWith('https://')) {
+      throw 'production S3_ENDPOINT must use https://'
+    }
+  } else {
+    throw "Unsupported BACKUP_REMOTE_PROVIDER: $provider"
+  }
+}
+
+function Get-FileSha256Hex {
+  param([Parameter(Mandatory)][string]$Path)
+  return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
+function Write-BackupManifest {
+  param(
+    [Parameter(Mandatory)][string]$DatabaseKey,
+    [Parameter(Mandatory)][string]$DumpPath,
+    [Parameter(Mandatory)][long]$Bytes,
+    [Parameter(Mandatory)][string]$Sha256,
+    $Remote = $null
+  )
+  $manifest = [ordered]@{
+    database       = $DatabaseKey
+    file           = (Split-Path $DumpPath -Leaf)
+    bytes          = $Bytes
+    sha256         = $Sha256
+    timestamp_utc  = (Get-Date).ToUniversalTime().ToString('o')
+    remote         = $Remote
+  }
+  $out = "$DumpPath.manifest.json"
+  ($manifest | ConvertTo-Json -Depth 6 -Compress) | Set-Content -LiteralPath $out -Encoding utf8
+  Write-NexaBackupLog -Level INFO -Message 'backup.manifest' -Meta @{
+    database = $DatabaseKey
+    path     = (Split-Path $out -Leaf)
+  }
+}
