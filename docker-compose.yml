@@ -3,7 +3,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: nexa_identity
-      POSTGRES_PASSWORD: nexa_identity_dev
+      # Local dev default; VPS/dogfood MUST override via --env-file (see docker-compose.vps.env.example)
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD:-nexa_identity_dev}
       POSTGRES_DB: nexa_identity
     # Bind to localhost only — never expose Postgres on the public internet
     ports:
@@ -15,7 +16,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: nexa_stays
-      POSTGRES_PASSWORD: nexa_stays_dev
+      POSTGRES_PASSWORD: ${STAYS_DB_PASSWORD:-nexa_stays_dev}
       POSTGRES_DB: nexa_stays
     ports:
       - "127.0.0.1:5434:5432"
@@ -30,7 +31,9 @@ services:
       - redis_data:/data
 
 volumes:
-  # Reuse the original standalone-container volumes so existing dev data is kept.
+  # External named volumes: preserve existing local/dev data and match historical
+  # volume names. Blank VPS: run scripts/ensure-vps-volumes.sh before compose up.
+  # Do NOT run docker compose down -v.
   identity_pg_data:
     external: true
     name: identity_identity_pg_data
