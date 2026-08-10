@@ -60,6 +60,18 @@ Backend defaults match these ports (`backend/identity/.env`, `backend/stays/.env
 2. Run `database/migrate.ps1` (or the per-db script).
 3. Migrations are tracked in `schema_migrations` — already-applied files are skipped.
 
+## Staging / production migrate (explicit)
+
+Do **not** rely on application boot to migrate. Deploy sequencing uses:
+
+```sh
+export IDENTITY_DATABASE_URL='postgresql://…'   # never echo
+export STAYS_DATABASE_URL='postgresql://…'
+./scripts/migrate-remote.sh
+```
+
+Failure stops promotion. Schema is not auto-rolled back. See `backend/deploy/` and expand→migrate→verify→contract for breaking changes.
+
 migrations were extracted from `nexa_backend/` for the split architecture. Pay/Go tables are **not** included.
 
 ## Backup and restore
