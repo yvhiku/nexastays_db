@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.backup.example
 
 # Database dumps & backups
 *.dump
