@@ -8,6 +8,8 @@ DECLARE
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM stays_conversations WHERE booking_id = '42f8947a-6090-432a-8428-611dabd518d8'
+  ) AND EXISTS (
+    SELECT 1 FROM stays_bookings WHERE id = '42f8947a-6090-432a-8428-611dabd518d8'
   ) THEN
     INSERT INTO stays_conversations (
       booking_id, type, listing_id, host_user_id, guest_user_id,
@@ -34,6 +36,8 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1 FROM stays_conversations WHERE booking_id = 'fd04ed28-8f49-497b-a3e8-2a828b9ba53f'
+  ) AND EXISTS (
+    SELECT 1 FROM stays_bookings WHERE id = 'fd04ed28-8f49-497b-a3e8-2a828b9ba53f'
   ) THEN
     INSERT INTO stays_conversations (
       booking_id, type, listing_id, host_user_id, guest_user_id,
