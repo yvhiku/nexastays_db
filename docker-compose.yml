@@ -1,6 +1,14 @@
 services:
   identity-db:
     image: postgres:16-alpine
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/var/lib/postgresql/data/server.crt
+      - -c
+      - ssl_key_file=/var/lib/postgresql/data/server.key
     environment:
       POSTGRES_USER: nexa_identity
       # Local dev default; VPS/dogfood MUST override via --env-file (see docker-compose.vps.env.example)
@@ -14,6 +22,14 @@ services:
 
   stays-db:
     image: postgres:16-alpine
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/var/lib/postgresql/data/server.crt
+      - -c
+      - ssl_key_file=/var/lib/postgresql/data/server.key
     environment:
       POSTGRES_USER: nexa_stays
       POSTGRES_PASSWORD: ${STAYS_DB_PASSWORD:-nexa_stays_dev}
