@@ -3,7 +3,7 @@
 set -uo pipefail
 
 ENV_FILE="${NEXA_BACKUP_ENV_FILE:-/etc/nexa/backup.env}"
-ROOT="${NEXA_DATABASE_ROOT:-/opt/nexa/database}"
+ROOT="${NEXA_DATABASE_ROOT:-/opt/nexa/backup-tools}"
 LOG_DIR="${NEXA_BACKUP_LOG_DIR:-/var/log/nexa}"
 
 mkdir -p "${LOG_DIR}"

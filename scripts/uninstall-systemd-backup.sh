@@ -16,5 +16,5 @@ systemctl daemon-reload
 systemctl reset-failed nexa-db-backup.service 2>/dev/null || true
 
 echo "Removed systemd timer/service."
-echo "Left in place (safe by default): /etc/nexa/backup.env, /var/backups/nexa, /opt/nexa/database"
+echo "Left in place (safe by default): /etc/nexa/backup.env, /var/backups/nexa, /opt/nexa/backup-tools"
 echo "Delete those manually if retiring the host."

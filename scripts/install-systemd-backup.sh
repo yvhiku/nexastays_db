@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Install Nexa DB backup systemd unit+timer artifacts on a VPS (SSH + Compose).
 #
-# Model (B2): /opt/nexa/database is a DEDICATED database repository checkout.
-# Installer refreshes scripts/docs WITHOUT rsync --delete so host dumps, logs,
-# and env files under DEST cannot be wiped.
+# Model (B2): /opt/nexa/backup-tools is a root-controlled runtime copy.
+# It must never resolve to the application-owned source checkout.
 #
 # Usage (as root):
 #   ./scripts/install-systemd-backup.sh --stage dogfood|staging|production [SRC_REPO]
@@ -68,7 +67,7 @@ if [[ -z "${SRC}" ]]; then
   SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 SRC="$(cd "${SRC}" && pwd)"
-DEST="${NEXA_DATABASE_ROOT:-/opt/nexa/database}"
+DEST="${NEXA_DATABASE_ROOT:-/opt/nexa/backup-tools}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "ERROR: run as root" >&2
@@ -89,6 +88,10 @@ echo "Installing backup tooling (stage=${STAGE}): ${SRC} -> ${DEST}"
 echo "Mode: dedicated database repo checkout; NO rsync --delete (B2)"
 
 mkdir -p /opt/nexa "${DEST}" /etc/nexa /var/backups/nexa /var/log/nexa /var/lock
+if [[ "$(readlink -f "${DEST}")" == "$(readlink -f "${SRC}")" ]]; then
+  echo "ERROR: runtime destination must not resolve to the source checkout" >&2
+  exit 1
+fi
 chown root:root "${DEST}"
 chmod 755 "${DEST}"
 chmod 700 /var/backups/nexa /etc/nexa

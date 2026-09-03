@@ -10,4 +10,4 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Nightly 02:15 UTC — load secrets from a root-only env file
 # Prefer flock-backed backup-postgres.sh (built-in lock) over bare cron alone.
-15 2 * * * root set -a; . /etc/nexa/backup.env; set +a; /opt/nexa/database/scripts/backup-postgres.sh all >> /var/log/nexa/nexa-db-backup.log 2>&1
+15 2 * * * root set -a; . /etc/nexa/backup.env; set +a; /opt/nexa/backup-tools/scripts/backup-postgres.sh all >> /var/log/nexa/nexa-db-backup.log 2>&1

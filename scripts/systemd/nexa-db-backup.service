@@ -1,6 +1,6 @@
 [Unit]
 Description=Nexa Stays database backup (Identity + Stays logical dumps)
-Documentation=file:///opt/nexa/database/docs/PRODUCTION_BACKUP_AND_RESTORE.md
+Documentation=file:///opt/nexa/backup-tools/docs/PRODUCTION_BACKUP_AND_RESTORE.md
 After=network-online.target docker.service
 Wants=network-online.target
 
@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=oneshot
 User=root
 UMask=0077
-Environment=NEXA_DATABASE_ROOT=/opt/nexa/database
+Environment=NEXA_DATABASE_ROOT=/opt/nexa/backup-tools
 Environment=NEXA_BACKUP_ENV_FILE=/etc/nexa/backup.env
 Environment=NEXA_BACKUP_LOG_DIR=/var/log/nexa
 # Hard wall-clock limit — fails the unit if backup hangs
@@ -19,10 +19,10 @@ IOSchedulingPriority=7
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadOnlyPaths=/etc/nexa /opt/nexa/database
+ReadOnlyPaths=/etc/nexa /opt/nexa/backup-tools
 ReadWritePaths=/var/backups/nexa /var/log/nexa /var/lock
 NoNewPrivileges=true
-ExecStart=/opt/nexa/database/scripts/run-scheduled-backup.sh
+ExecStart=/opt/nexa/backup-tools/scripts/run-scheduled-backup.sh
 # Do not put secrets in this unit file — use EnvironmentFile via wrapper.
 
 [Install]
