@@ -7,6 +7,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
+UMask=0077
 Environment=NEXA_DATABASE_ROOT=/opt/nexa/database
 Environment=NEXA_BACKUP_ENV_FILE=/etc/nexa/backup.env
 Environment=NEXA_BACKUP_LOG_DIR=/var/log/nexa
@@ -15,6 +16,12 @@ TimeoutStartSec=3600
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/etc/nexa /opt/nexa/database
+ReadWritePaths=/var/backups/nexa /var/log/nexa /var/lock
+NoNewPrivileges=true
 ExecStart=/opt/nexa/database/scripts/run-scheduled-backup.sh
 # Do not put secrets in this unit file — use EnvironmentFile via wrapper.
 
