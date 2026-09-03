@@ -46,6 +46,8 @@ sudo bash /opt/nexa/database/scripts/validate-backup-env.sh
 
 The interactive configurator reads the two existing database passwords from `/opt/nexa/nexastays_db/.env.db`, writes `/etc/nexa/backup.env` as `root:root` mode `0600`, and does not echo secret input.
 
+The installer makes `/opt/nexa/database` and its deployed scripts root-controlled because the backup unit executes them as root. Continue normal application/database Git work in `/opt/nexa/nexastays_db`; treat `/opt/nexa/database` only as the installed backup-tool copy.
+
 ## Required validation order
 
 1. Test both alert channels without dumping data:

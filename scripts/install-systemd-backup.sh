@@ -89,6 +89,8 @@ echo "Installing backup tooling (stage=${STAGE}): ${SRC} -> ${DEST}"
 echo "Mode: dedicated database repo checkout; NO rsync --delete (B2)"
 
 mkdir -p /opt/nexa "${DEST}" /etc/nexa /var/backups/nexa /var/log/nexa /var/lock
+chown root:root "${DEST}"
+chmod 755 "${DEST}"
 chmod 700 /var/backups/nexa /etc/nexa
 chmod 750 /var/log/nexa || true
 
@@ -108,9 +110,12 @@ if [[ -f "${SRC}/.env.backup.example" ]]; then
   install -m 644 "${SRC}/.env.backup.example" "${DEST}/.env.backup.example"
 fi
 
+# The unit runs as root to read the root-only credential file. Its executable
+# path must therefore be root-controlled, not writable by the login user.
+chown -R root:root "${DEST}/scripts" "${DEST}/docs"
+find "${DEST}/scripts" "${DEST}/docs" -type d -exec chmod 755 {} +
+find "${DEST}/scripts" "${DEST}/docs" -type f -exec chmod 644 {} +
 chmod 755 "${DEST}/scripts/"*.sh 2>/dev/null || true
-chmod 644 "${DEST}/scripts/systemd/"* 2>/dev/null || true
-chmod 644 "${DEST}/scripts/env/"* 2>/dev/null || true
 
 ENV_FILE=/etc/nexa/backup.env
 if [[ ! -f "${ENV_FILE}" ]]; then
