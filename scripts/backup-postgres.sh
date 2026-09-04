@@ -73,7 +73,8 @@ encrypt_upload() {
 }
 
 run_one() {
-  local db_key="$1" db_name="$2" env_name="$3" url="${!env_name:-}"
+  local db_key="$1" db_name="$2" env_name="$3" url
+  url="${!env_name:-}"
   local db_plain roles_plain pg_version toc table representative_rows extension_count
   [[ -n "${url}" ]] || { log FAIL backup.failed "missing ${env_name}"; return 1; }
   db_plain="${RUN_TMP}/${db_key}.dump"
